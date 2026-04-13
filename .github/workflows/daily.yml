@@ -1,0 +1,42 @@
+name: Dividend Tracker
+
+on:
+  schedule:
+    - cron: "0 7 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Code laden
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pakete installieren
+        run: pip install yfinance pyyaml
+
+      - name: Datenbank wiederherstellen
+        uses: actions/cache/restore@v4
+        with:
+          path: dividend_history.db
+          key: divdb-${{ runner.os }}
+          restore-keys: divdb-
+
+      - name: Tracker ausfuehren
+        run: python tracker.py
+        env:
+          TELEGRAM_TOKEN:   ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Datenbank speichern
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: dividend_history.db
+          key: divdb-${{ runner.os }}-${{ github.run_id }}
