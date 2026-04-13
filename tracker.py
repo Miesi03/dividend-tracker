@@ -19,7 +19,7 @@ FMP_KEY         = os.environ.get("FMP_KEY", "")
 TELEGRAM_TOKEN  = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-BASE_URL  = "https://financialmodelingprep.com/api/v3"
+BASE_URL  = "https://financialmodelingprep.com/stable"
 DB_PATH   = Path("dividend_history.db")
 WATCHLIST = Path("watchlist.yaml")
 
@@ -82,26 +82,39 @@ def save_alert(con, ticker, ex_date, old_amount, new_amount, change_pct):
 
 def fetch_dividend_history(ticker):
     """
-    Holt die komplette Dividendenhistorie eines Tickers von FMP.
+    Holt die Dividendenhistorie eines Tickers vom neuen FMP /stable/ Endpunkt.
     Gibt eine Liste von Dicts zurueck oder None bei Fehler/kein Zugang.
+
+    Neuer Endpunkt (seit Aug 2025):
+      GET /stable/dividends-company?symbol=MSFT&apikey=KEY
+    Antwort: Liste von Objekten mit date, adjDividend, dividend, ...
     """
-    url = f"{BASE_URL}/historical-price-full/stock_dividend/{ticker}"
+    url = f"{BASE_URL}/dividends-company"
     try:
-        resp = requests.get(url, params={"apikey": FMP_KEY}, timeout=15)
+        resp = requests.get(url, params={"symbol": ticker, "apikey": FMP_KEY}, timeout=15)
         if resp.status_code == 403:
             print(f"  [{ticker}] kein FMP-Zugang (403) – uebersprungen")
+            return None
+        if resp.status_code == 401:
+            print(f"  [{ticker}] API-Key ungueltig (401) – FMP_KEY pruefen")
             return None
         if resp.status_code != 200:
             print(f"  [{ticker}] HTTP {resp.status_code} – uebersprungen")
             return None
         data = resp.json()
-        historical = data.get("historical", [])
-        if not historical:
+        # Neue API gibt direkt eine Liste zurueck (kein "historical"-Wrapper)
+        if isinstance(data, dict):
+            # Fehler-Antwort z.B. {"Error Message": "..."}
+            err = data.get("Error Message", data.get("message", ""))
+            if err:
+                print(f"  [{ticker}] API-Fehler: {err}")
+            return None
+        if not isinstance(data, list) or len(data) == 0:
             print(f"  [{ticker}] keine Dividendendaten gefunden")
             return None
-        # Sortiert nach ex_date absteigend (neueste zuerst)
-        historical.sort(key=lambda x: x.get("date", ""), reverse=True)
-        return historical
+        # Sortiert nach date absteigend (neueste zuerst)
+        data.sort(key=lambda x: x.get("date", ""), reverse=True)
+        return data
     except requests.RequestException as e:
         print(f"  [{ticker}] Netzwerkfehler: {e}")
         return None
