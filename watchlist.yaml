@@ -6,7 +6,7 @@ tickers:
   - DE
   - DPZ
   - XOM
-  - HEI
+  - HEI.DE
   - KLAC
   - LMT
   - MSCI
@@ -26,5 +26,5 @@ tickers:
   - ZTS
   - AEM
   - ASML
-  - ALV
-  - MC
+  - ALV.DE
+  - MC.PA
