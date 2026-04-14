@@ -266,13 +266,27 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
 def check_yfinance(con, ticker):
     try:
         import yfinance as yf
-        divs = yf.Ticker(ticker).dividends
-        if divs is None or divs.empty:
+        import pandas as pd
+        raw = yf.Ticker(ticker).dividends
+        if raw is None or (hasattr(raw, 'empty') and raw.empty):
             return None
-        history = sorted(
-            [(ts.date().isoformat(), float(v)) for ts, v in divs.items()],
-            reverse=True,
-        )
+        # yfinance >= 0.2.x gibt DataFrame zurueck, aeltere Versionen Series
+        if isinstance(raw, pd.DataFrame):
+            # DataFrame: Index = Timestamp, erste Spalte = Betrag
+            col = raw.columns[0]
+            items = [(idx, float(row[col])) for idx, row in raw.iterrows()]
+        else:
+            # Series (aelteres Format)
+            items = [(ts, float(v)) for ts, v in raw.items()]
+        # Index kann Timestamp oder String sein
+        history = []
+        for ts, amount in items:
+            if hasattr(ts, 'date'):
+                ex_date = ts.date().isoformat()
+            else:
+                ex_date = str(ts)[:10]
+            history.append((ex_date, amount))
+        history.sort(reverse=True)
     except Exception as e:
         print(f"    yfinance-Fehler: {e}")
         return None
