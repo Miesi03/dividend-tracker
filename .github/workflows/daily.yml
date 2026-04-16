@@ -8,10 +8,14 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Code laden
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Python einrichten
         uses: actions/setup-python@v5
@@ -21,13 +25,6 @@ jobs:
       - name: Pakete installieren
         run: pip install yfinance pyyaml
 
-      - name: Datenbank wiederherstellen
-        uses: actions/cache/restore@v4
-        with:
-          path: dividend_history.db
-          key: divdb-${{ runner.os }}
-          restore-keys: divdb-
-
       - name: Tracker ausfuehren
         run: python tracker.py
         env:
@@ -35,8 +32,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
       - name: Datenbank speichern
-        uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: dividend_history.db
-          key: divdb-${{ runner.os }}-${{ github.run_id }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add -f dividend_history.db
+          git status
+          git diff --staged --quiet && echo "Keine Aenderungen" || git commit -m "db: update $(date -u +%Y-%m-%d)"
+          git push
