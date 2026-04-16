@@ -294,8 +294,11 @@ def check_yfinance(con, ticker):
     if not history:
         return None
 
+    # Speichere die zwei neuesten Ex-Dates damit sofort verglichen werden kann
+    for ex_date, amount in history[:2]:
+        upsert(con, ticker, ex_date, amount)
+
     latest_date, latest_amount = history[0]
-    upsert(con, ticker, latest_date, latest_amount)
 
     rows = get_stored(con, ticker, limit=2)
     if len(rows) < 2:
