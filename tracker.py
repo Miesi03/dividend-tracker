@@ -16,6 +16,51 @@ WATCHLIST        = Path("watchlist.yaml")
 MIN_CHANGE_PCT   = 0.5
 SEC_UA           = "DividendTracker private-use admin@example.com"
 
+# ── Währung ───────────────────────────────────────────────────────────────────
+
+def get_currency_symbol(ticker: str) -> str:
+    """Gibt das Währungssymbol basierend auf dem Ticker-Suffix zurück.
+    yfinance liefert Dividenden bereits in der Heimatwährung der Aktie —
+    wir müssen nur das korrekte Symbol anzeigen.
+    """
+    t = ticker.upper()
+    # Euro-Börsen
+    if any(t.endswith(s) for s in [
+        '.DE',   # Xetra (Deutschland)
+        '.PA',   # Euronext Paris
+        '.AS',   # Euronext Amsterdam
+        '.MI',   # Borsa Italiana
+        '.BR',   # Euronext Brüssel
+        '.LS',   # Euronext Lissabon
+        '.MC',   # Bolsa Madrid
+        '.HE',   # Nasdaq Helsinki
+        '.AT',   # Athex (Griechenland)
+        '.VI',   # Wiener Börse
+        '.AM',   # Euronext Amsterdam (alt)
+        '.IR',   # Euronext Dublin
+    ]):
+        return '€'
+    elif t.endswith('.SW'):
+        return 'CHF '   # SIX Swiss Exchange
+    elif t.endswith('.OL'):
+        return 'NOK '   # Oslo Børs
+    elif t.endswith(('.CO', '.CPH')):
+        return 'DKK '   # Nasdaq Kopenhagen
+    elif t.endswith('.ST'):
+        return 'SEK '   # Nasdaq Stockholm
+    elif t.endswith('.HK'):
+        return 'HK$'    # Hongkong Stock Exchange
+    elif t.endswith('.T'):
+        return '¥'      # Tokyo Stock Exchange
+    elif t.endswith('.L'):
+        return 'p '     # London Stock Exchange (yfinance liefert Pence, nicht Pfund)
+    elif t.endswith('.AX'):
+        return 'A$'     # Australian Securities Exchange
+    elif t.endswith('.TO') or t.endswith('.V'):
+        return 'CA$'    # Toronto Stock Exchange
+    else:
+        return '$'      # Default: USD (US-Börsen ohne Suffix)
+
 # ── Datenbank ─────────────────────────────────────────────────────────────────
 
 def init_db():
@@ -83,8 +128,8 @@ def send_telegram(message):
         print("  [Telegram] Keine Zugangsdaten gesetzt")
         return
     payload = json.dumps({
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
+        "chat_id":    TELEGRAM_CHAT_ID,
+        "text":       message,
         "parse_mode": "HTML",
     }).encode()
     req = urllib.request.Request(
@@ -95,31 +140,33 @@ def send_telegram(message):
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             ok = json.loads(r.read()).get("ok", False)
-            print(f"  [Telegram] {'✓ Gesendet' if ok else '✗ Fehler'}")
+        print(f"  [Telegram] {'✓ Gesendet' if ok else '✗ Fehler'}")
     except Exception as e:
         print(f"  [Telegram] Fehler: {e}")
 
 # ── Nachrichtenformat ─────────────────────────────────────────────────────────
 
 def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date):
+    """EDGAR deckt nur US-Unternehmen ab → Währung ist immer USD ($)."""
     arrow = "↑" if (change_pct or 0) >= 0 else "↓"
     lines = [f"📢 <b>{company} ({ticker})</b>"]
     lines.append(f"{arrow} Dividendenankuendigung via SEC EDGAR")
     lines.append(f"   Neue Dividende: <b>${fmt(amount)}</b> pro Aktie")
     if old_amount:
         lines.append(f"   Vorherige Dividende: ${fmt(old_amount)}")
-        if change_pct is not None:
-            word = "Erhoehung" if change_pct > 0 else "Senkung"
-            lines.append(f"   ➜ Das ist eine <b>{word} von {abs(change_pct):.1f}%</b>")
+    if change_pct is not None:
+        word = "Erhoehung" if change_pct > 0 else "Senkung"
+        lines.append(f"   ➜ Das ist eine <b>{word} von {abs(change_pct):.1f}%</b>")
     lines.append(f"   Eingereicht am: {filing_date}")
     return "\n".join(lines)
 
-def msg_yfinance(ticker, amount, old_amount, change_pct, ex_date, prev_date):
+def msg_yfinance(ticker, amount, old_amount, change_pct, ex_date, prev_date, currency='$'):
+    """Zeigt Dividenden in der Heimatwährung der Aktie an."""
     arrow = "↑" if change_pct > 0 else "↓"
     word  = "Erhoehung" if change_pct > 0 else "Senkung"
     lines = [f"{arrow} <b>{ticker} — Dividenden{word} ({change_pct:+.1f}%)</b>"]
-    lines.append(f"   Neue Dividende: <b>${fmt(amount)}</b>  (Ex-Date: {ex_date})")
-    lines.append(f"   Vorher:         ${fmt(old_amount)}  (Ex-Date: {prev_date})")
+    lines.append(f"   Neue Dividende: <b>{currency}{fmt(amount)}</b>  (Ex-Date: {ex_date})")
+    lines.append(f"   Vorher:         {currency}{fmt(old_amount)}  (Ex-Date: {prev_date})")
     return "\n".join(lines)
 
 def build_message(edgar_alerts, yf_alerts):
@@ -156,10 +203,11 @@ AMOUNT_RE = [
     r"(?:quarterly|monthly|annual)\s+(?:cash\s+)?dividend\s+of\s+\$?([\d.]+)\s+per\s+(?:common\s+)?share",
     r"\$?([\d.]+)\s+per\s+(?:common\s+)?share[^.]{0,60}dividend",
 ]
+
 CHANGE_RE = [
-    (r"(\d+(?:\.\d+)?)\s*(?:percent|%)\s+increase", "increase"),
-    (r"increase[^.]{0,30}(\d+(?:\.\d+)?)\s*(?:percent|%)", "increase"),
-    (r"(\d+(?:\.\d+)?)\s*(?:percent|%)\s+decrease", "decrease"),
+    (r"(\d+(?:\.\d+)?)\s*(?:percent|%)\s+increase",            "increase"),
+    (r"increase[^.]{0,30}(\d+(?:\.\d+)?)\s*(?:percent|%)",    "increase"),
+    (r"(\d+(?:\.\d+)?)\s*(?:percent|%)\s+decrease",            "decrease"),
     (r"increase[d]?\s+(?:the\s+)?dividend\s+by\s+(\d+(?:\.\d+)?)", "increase"),
 ]
 
@@ -192,7 +240,7 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
     try:
         sub = json.loads(http_get(f"https://data.sec.gov/submissions/CIK{cik}.json"))
     except Exception as e:
-        print(f"    EDGAR-Fehler: {e}")
+        print(f"  EDGAR-Fehler: {e}")
         return alerts
 
     rec   = sub["filings"]["recent"]
@@ -209,22 +257,19 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
         adsh = accs[i]
         if seen(con, adsh):
             continue
-
         doc = pdocs[i] if i < len(pdocs) else ""
         if not doc:
             mark_seen(con, adsh, ticker)
             continue
 
-        cik_int   = int(cik)
-        acc_path  = adsh.replace("-", "")
-        doc_url   = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_path}/{doc}"
-
+        cik_int  = int(cik)
+        acc_path = adsh.replace("-", "")
+        doc_url  = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_path}/{doc}"
         try:
             text = strip_html(http_get(doc_url, timeout=12))
         except Exception:
             mark_seen(con, adsh, ticker)
             continue
-
         time.sleep(0.12)
 
         if "dividend" not in text.lower():
@@ -233,11 +278,10 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
 
         amount = extract_amount(text)
         mark_seen(con, adsh, ticker)
-
         if amount is None:
             continue
 
-        stored    = get_stored(con, ticker, limit=1)
+        stored     = get_stored(con, ticker, limit=1)
         old_amount = stored[0][1] if stored else None
 
         if old_amount and old_amount > 0:
@@ -246,19 +290,16 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
             calc_pct = None
 
         reported_pct = extract_change(text) or calc_pct
-
         is_new    = old_amount is None
         is_change = reported_pct is not None and abs(reported_pct) >= MIN_CHANGE_PCT
 
         if not is_new and not is_change:
-            print(f"    EDGAR: ${amount:.4f} — keine Aenderung")
+            print(f"  EDGAR: ${amount:.4f} — keine Aenderung")
             continue
 
         pct_str = f"{reported_pct:+.1f}%" if reported_pct else "neu"
-        print(f"    *** EDGAR-Ankuendigung: ${amount:.4f} ({pct_str}) ***")
-
+        print(f"  *** EDGAR-Ankuendigung: ${amount:.4f} ({pct_str}) ***")
         alerts.append(msg_edgar(ticker, company_name, amount, old_amount, reported_pct, dates[i]))
-
     return alerts
 
 # ── yfinance ──────────────────────────────────────────────────────────────────
@@ -267,18 +308,18 @@ def check_yfinance(con, ticker):
     try:
         import yfinance as yf
         import pandas as pd
+
         raw = yf.Ticker(ticker).dividends
         if raw is None or (hasattr(raw, 'empty') and raw.empty):
             return None
-        # yfinance >= 0.2.x gibt DataFrame zurueck, aeltere Versionen Series
+
+        # yfinance >= 0.2.x gibt DataFrame zurück, ältere Versionen Series
         if isinstance(raw, pd.DataFrame):
-            # DataFrame: Index = Timestamp, erste Spalte = Betrag
-            col = raw.columns[0]
+            col   = raw.columns[0]
             items = [(idx, float(row[col])) for idx, row in raw.iterrows()]
         else:
-            # Series (aelteres Format)
             items = [(ts, float(v)) for ts, v in raw.items()]
-        # Index kann Timestamp oder String sein
+
         history = []
         for ts, amount in items:
             if hasattr(ts, 'date'):
@@ -287,8 +328,9 @@ def check_yfinance(con, ticker):
                 ex_date = str(ts)[:10]
             history.append((ex_date, amount))
         history.sort(reverse=True)
+
     except Exception as e:
-        print(f"    yfinance-Fehler: {e}")
+        print(f"  yfinance-Fehler: {e}")
         return None
 
     if not history:
@@ -296,7 +338,10 @@ def check_yfinance(con, ticker):
 
     latest_date, latest_amount = history[0]
 
-    # Pruefen ob der neueste Ex-Date bereits bekannt ist
+    # Heimatwährung des Tickers ermitteln
+    currency = get_currency_symbol(ticker)
+
+    # Prüfen ob der neueste Ex-Date bereits bekannt ist
     existing = get_stored(con, ticker, limit=1)
 
     if not existing:
@@ -305,37 +350,36 @@ def check_yfinance(con, ticker):
             upsert(con, ticker, ex_date, amount)
         rows = get_stored(con, ticker, limit=2)
         if len(rows) < 2:
-            print(f"    Baseline gesetzt: ${latest_amount:.4f} ({latest_date})")
+            print(f"  Baseline gesetzt: {currency}{latest_amount:.4f} ({latest_date})")
             return None
-        # Ersten Vergleich direkt aus gespeicherten Daten machen
-        curr_date, curr_amount = rows[0]
-        prev_date, prev_amount = rows[1]
+        curr_date,  curr_amount  = rows[0]
+        prev_date,  prev_amount  = rows[1]
     else:
-        # Folgelaeufe: nur neuesten Ex-Date speichern
+        # Folgeläufe: nur neuesten Ex-Date speichern
         upsert(con, ticker, latest_date, latest_amount)
         rows = get_stored(con, ticker, limit=2)
         if len(rows) < 2:
-            print(f"    Baseline gesetzt: ${latest_amount:.4f} ({latest_date})")
+            print(f"  Baseline gesetzt: {currency}{latest_amount:.4f} ({latest_date})")
             return None
-        curr_date, curr_amount = rows[0]
-        prev_date, prev_amount = rows[1]
-        # Kein Alert wenn der neueste Ex-Date derselbe wie beim letzten Lauf
-        if curr_date == existing[0][0] and curr_amount == existing[0][1]:
-            print(f"    Unveraendert: ${curr_amount:.4f} (+0.00%)")
-            return None
+        curr_date,  curr_amount  = rows[0]
+        prev_date,  prev_amount  = rows[1]
+
+    # Kein Alert wenn der neueste Ex-Date derselbe wie beim letzten Lauf
+    if curr_date == existing[0][0] and curr_amount == existing[0][1]:
+        print(f"  Unveraendert: {currency}{curr_amount:.4f} (+0.00%)")
+        return None
 
     if prev_amount == 0:
         return None
 
     pct = (curr_amount - prev_amount) / prev_amount * 100
-
     if abs(pct) < MIN_CHANGE_PCT:
-        print(f"    Unveraendert: ${curr_amount:.4f} ({pct:+.2f}%)")
+        print(f"  Unveraendert: {currency}{curr_amount:.4f} ({pct:+.2f}%)")
         return None
 
     direction = "Erhoehung" if pct > 0 else "Senkung"
-    print(f"    *** {direction}: {pct:+.2f}% ***")
-    return msg_yfinance(ticker, curr_amount, prev_amount, pct, curr_date, prev_date)
+    print(f"  *** {direction}: {pct:+.2f}% ***")
+    return msg_yfinance(ticker, curr_amount, prev_amount, pct, curr_date, prev_date, currency)
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────
 
@@ -349,7 +393,7 @@ def load_watchlist():
 def main():
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     print(f"\n{'='*52}")
-    print(f"  Dividend Tracker  —  {now}")
+    print(f"  Dividend Tracker — {now}")
     print(f"{'='*52}\n")
 
     tickers = load_watchlist()
@@ -369,13 +413,11 @@ def main():
         if not cik:
             print(f"  [{ticker}] kein US-CIK — wird nur via yfinance geprueft")
             continue
-
         try:
             sub          = json.loads(http_get(f"https://data.sec.gov/submissions/CIK{cik}.json"))
             company_name = sub.get("name", ticker)
         except Exception:
             company_name = ticker
-
         print(f"  [{ticker}] {company_name}")
         alerts = scan_edgar(con, ticker, cik, company_name)
         if alerts:
