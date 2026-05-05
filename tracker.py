@@ -150,12 +150,12 @@ def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date):
     """EDGAR deckt nur US-Unternehmen ab → Währung ist immer USD ($)."""
     arrow = "↑" if (change_pct or 0) >= 0 else "↓"
     lines = [f"📢 <b>{company} ({ticker})</b>"]
-    lines.append(f"{arrow} Dividendenankuendigung via SEC EDGAR")
+    lines.append(f"{arrow} Dividendenankündigung via SEC EDGAR")
     lines.append(f"   Neue Dividende: <b>${fmt(amount)}</b> pro Aktie")
     if old_amount:
         lines.append(f"   Vorherige Dividende: ${fmt(old_amount)}")
     if change_pct is not None:
-        word = "Erhoehung" if change_pct > 0 else "Senkung"
+        word = "Erhöhung" if change_pct > 0 else "Senkung"
         lines.append(f"   ➜ Das ist eine <b>{word} von {abs(change_pct):.1f}%</b>")
     lines.append(f"   Eingereicht am: {filing_date}")
     return "\n".join(lines)
@@ -163,7 +163,7 @@ def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date):
 def msg_yfinance(ticker, amount, old_amount, change_pct, ex_date, prev_date, currency='$'):
     """Zeigt Dividenden in der Heimatwährung der Aktie an."""
     arrow = "↑" if change_pct > 0 else "↓"
-    word  = "Erhoehung" if change_pct > 0 else "Senkung"
+    word  = "Erhöhung" if change_pct > 0 else "Senkung"
     lines = [f"{arrow} <b>{ticker} — Dividenden{word} ({change_pct:+.1f}%)</b>"]
     lines.append(f"   Neue Dividende: <b>{currency}{fmt(amount)}</b>  (Ex-Date: {ex_date})")
     lines.append(f"   Vorher:         {currency}{fmt(old_amount)}  (Ex-Date: {prev_date})")
