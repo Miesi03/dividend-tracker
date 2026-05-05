@@ -173,10 +173,10 @@ def build_message(edgar_alerts, yf_alerts):
     today = date.today().strftime("%d.%m.%Y")
     parts = [f"<b>Dividend Tracker — {today}</b>"]
     if edgar_alerts:
-        parts.append("\n<b>── Neue Ankuendigungen (EDGAR) ──</b>")
+        parts.append("\n<b>── Neue Ankündigungen (EDGAR) ──</b>")
         parts.extend(edgar_alerts)
     if yf_alerts:
-        parts.append("\n<b>── Bestaetigt via Kursdaten ──</b>")
+        parts.append("\n<b>── Bestätigt via Kursdaten ──</b>")
         parts.extend(yf_alerts)
     parts.append(f"\n{len(edgar_alerts) + len(yf_alerts)} Meldung(en) heute.")
     return "\n\n".join(parts)
