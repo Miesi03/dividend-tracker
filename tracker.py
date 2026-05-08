@@ -144,9 +144,89 @@ def send_telegram(message):
     except Exception as e:
         print(f"  [Telegram] Fehler: {e}")
 
+# ── Datumsformat ─────────────────────────────────────────────────────────────
+
+def fmt_date_dmy(iso_date: str) -> str:
+    """Konvertiert ISO-Datum (YYYY-MM-DD) zu TT-MM-JJJJ."""
+    try:
+        dt = datetime.strptime(iso_date[:10], "%Y-%m-%d")
+        return dt.strftime("%d-%m-%Y")
+    except ValueError:
+        return iso_date
+
+# ── Dividendenfrequenz ────────────────────────────────────────────────────────
+
+def detect_frequency(history: list) -> str | None:
+    """Leitet die Zahlungsfrequenz aus den letzten Ex-Date-Abständen ab.
+    history: [(ex_date_iso, amount), ...] absteigend sortiert.
+    Nutzt bis zu 5 aufeinanderfolgende Abstände für Stabilität.
+    """
+    if len(history) < 2:
+        return None
+    gaps = []
+    for i in range(min(5, len(history) - 1)):
+        try:
+            d1 = date.fromisoformat(history[i][0])
+            d2 = date.fromisoformat(history[i + 1][0])
+            gaps.append((d1 - d2).days)
+        except (ValueError, TypeError):
+            continue
+    if not gaps:
+        return None
+    avg = sum(gaps) / len(gaps)
+    if avg < 45:
+        return "Monatlich"
+    elif avg < 135:
+        return "Quartalsweise"
+    elif avg < 270:
+        return "Halbjährlich"
+    else:
+        return "Jährlich"
+
+def extract_frequency_edgar(text: str) -> str | None:
+    """Extrahiert die Dividendenfrequenz aus einem EDGAR-Meldetext."""
+    t = text.lower()
+    if "quarterly" in t:
+        return "Quartalsweise"
+    if "monthly" in t:
+        return "Monatlich"
+    if "semi-annual" in t or "semiannual" in t or "semi annual" in t:
+        return "Halbjährlich"
+    if "annual" in t:
+        return "Jährlich"
+    return None
+
+# ── Ex-Date aus EDGAR-Text ────────────────────────────────────────────────────
+
+_EX_DATE_TEXT_RE = [
+    r"ex.dividend\s+date\s+(?:will\s+be\s+|is\s+|of\s+)?([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
+    r"ex.date\s+(?:will\s+be\s+|is\s+|of\s+)?([A-Za-z]+\s+\d{1,2},?\s+\d{4})",
+    r"ex.dividend\s+date\s+of\s+(\d{4}-\d{2}-\d{2})",
+    r"ex-dividend\s+date\s+(?:will\s+be\s+)?(\d{1,2}/\d{1,2}/\d{2,4})",
+]
+
+def extract_ex_date_edgar(text: str) -> str | None:
+    """Extrahiert das Ex-Dividende-Datum aus einem EDGAR-Meldetext.
+    Gibt das Datum als TT-MM-JJJJ zurück oder None.
+    """
+    for pat in _EX_DATE_TEXT_RE:
+        m = re.search(pat, text, re.I)
+        if not m:
+            continue
+        raw = m.group(1).strip()
+        for fmt_str in ("%B %d, %Y", "%B %d %Y", "%b %d, %Y",
+                        "%b %d %Y", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+            try:
+                dt = datetime.strptime(raw, fmt_str)
+                return dt.strftime("%d-%m-%Y")
+            except ValueError:
+                pass
+    return None
+
 # ── Nachrichtenformat ─────────────────────────────────────────────────────────
 
-def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date):
+def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date,
+              ex_date=None, frequency=None):
     """EDGAR deckt nur US-Unternehmen ab → Währung ist immer USD ($)."""
     arrow = "↑" if (change_pct or 0) >= 0 else "↓"
     lines = [f"📢 <b>{company} ({ticker})</b>"]
@@ -157,16 +237,27 @@ def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date):
     if change_pct is not None:
         word = "Erhöhung" if change_pct > 0 else "Senkung"
         lines.append(f"   ➜ Das ist eine <b>{word} von {abs(change_pct):.1f}%</b>")
-    lines.append(f"   Eingereicht am: {filing_date}")
+    lines.append(f"   Eingereicht am:  {filing_date}")
+    if ex_date:
+        lines.append(f"   Ex-Dividende:    {ex_date}")
+    if frequency:
+        lines.append(f"   Zahlungsweise:   {frequency}")
     return "\n".join(lines)
 
-def msg_yfinance(ticker, amount, old_amount, change_pct, ex_date, prev_date, currency='$'):
-    """Zeigt Dividenden in der Heimatwährung der Aktie an."""
-    arrow = "↑" if change_pct > 0 else "↓"
-    word  = "erhöhung" if change_pct > 0 else "senkung"
-    lines = [f"{arrow} <b>{ticker} — Dividenden{word} ({change_pct:+.1f}%)</b>"]
-    lines.append(f"   Neue Dividende: <b>{currency}{fmt(amount)}</b>  (Ex-Date: {ex_date})")
-    lines.append(f"   Vorher:         {currency}{fmt(old_amount)}  (Ex-Date: {prev_date})")
+def msg_yfinance(ticker, company, amount, old_amount, change_pct, ex_date, prev_date,
+                 currency='$', frequency=None):
+    """Zeigt Dividenden in der Heimatwährung der Aktie an – analog zum EDGAR-Format."""
+    arrow    = "↑" if change_pct > 0 else "↓"
+    word     = "Erhöhung" if change_pct > 0 else "Senkung"
+    ex_dmy   = fmt_date_dmy(ex_date)
+    prev_dmy = fmt_date_dmy(prev_date)
+    lines    = [f"📢 <b>{company} ({ticker})</b>"]
+    lines.append(f"{arrow} Dividendenankündigung via yfinance")
+    lines.append(f"   Neue Dividende: <b>{currency}{fmt(amount)}</b> pro Aktie  (Ex-Date: {ex_dmy})")
+    lines.append(f"   Vorherige Dividende: {currency}{fmt(old_amount)}  (Ex-Date: {prev_dmy})")
+    lines.append(f"   ➜ Das ist eine <b>{word} von {abs(change_pct):.1f}%</b>")
+    if frequency:
+        lines.append(f"   Zahlungsweise:   {frequency}")
     return "\n".join(lines)
 
 def build_message(edgar_alerts, yf_alerts):
@@ -297,9 +388,14 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
             print(f"  EDGAR: ${amount:.4f} — keine Aenderung")
             continue
 
+        # Ex-Dividende-Datum und Zahlungsfrequenz aus Meldetext extrahieren
+        ex_date   = extract_ex_date_edgar(text)
+        frequency = extract_frequency_edgar(text)
+
         pct_str = f"{reported_pct:+.1f}%" if reported_pct else "neu"
-        print(f"  *** EDGAR-Ankuendigung: ${amount:.4f} ({pct_str}) ***")
-        alerts.append(msg_edgar(ticker, company_name, amount, old_amount, reported_pct, dates[i]))
+        print(f"  *** EDGAR-Ankuendigung: ${amount:.4f} ({pct_str}) | Ex-Date: {ex_date or '–'} | {frequency or '–'} ***")
+        alerts.append(msg_edgar(ticker, company_name, amount, old_amount, reported_pct,
+                                dates[i], ex_date, frequency))
     return alerts
 
 # ── yfinance ──────────────────────────────────────────────────────────────────
@@ -309,9 +405,17 @@ def check_yfinance(con, ticker):
         import yfinance as yf
         import pandas as pd
 
-        raw = yf.Ticker(ticker).dividends
+        tk  = yf.Ticker(ticker)
+        raw = tk.dividends
         if raw is None or (hasattr(raw, 'empty') and raw.empty):
             return None
+
+        # Firmenname aus yfinance-Info ermitteln
+        try:
+            info         = tk.info
+            company_name = info.get("shortName") or info.get("longName") or ticker
+        except Exception:
+            company_name = ticker
 
         # yfinance >= 0.2.x gibt DataFrame zurück, ältere Versionen Series
         if isinstance(raw, pd.DataFrame):
@@ -340,6 +444,9 @@ def check_yfinance(con, ticker):
 
     # Heimatwährung des Tickers ermitteln
     currency = get_currency_symbol(ticker)
+
+    # Zahlungsfrequenz aus historischen Ex-Dates ableiten
+    frequency = detect_frequency(history)
 
     # Prüfen ob der neueste Ex-Date bereits bekannt ist
     existing = get_stored(con, ticker, limit=1)
@@ -378,8 +485,9 @@ def check_yfinance(con, ticker):
         return None
 
     direction = "Erhoehung" if pct > 0 else "Senkung"
-    print(f"  *** {direction}: {pct:+.2f}% ***")
-    return msg_yfinance(ticker, curr_amount, prev_amount, pct, curr_date, prev_date, currency)
+    print(f"  *** {direction}: {pct:+.2f}% | {company_name} | {frequency or '–'} ***")
+    return msg_yfinance(ticker, company_name, curr_amount, prev_amount, pct,
+                        curr_date, prev_date, currency, frequency)
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────
 
