@@ -163,7 +163,7 @@ def msg_edgar(ticker, company, amount, old_amount, change_pct, filing_date):
 def msg_yfinance(ticker, amount, old_amount, change_pct, ex_date, prev_date, currency='$'):
     """Zeigt Dividenden in der Heimatwährung der Aktie an."""
     arrow = "↑" if change_pct > 0 else "↓"
-    word  = "Erhöhung" if change_pct > 0 else "Senkung"
+    word  = "erhöhung" if change_pct > 0 else "senkung"
     lines = [f"{arrow} <b>{ticker} — Dividenden{word} ({change_pct:+.1f}%)</b>"]
     lines.append(f"   Neue Dividende: <b>{currency}{fmt(amount)}</b>  (Ex-Date: {ex_date})")
     lines.append(f"   Vorher:         {currency}{fmt(old_amount)}  (Ex-Date: {prev_date})")
