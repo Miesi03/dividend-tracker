@@ -15,7 +15,7 @@ jobs:
       - name: Code laden
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0    # Vollständige History – verhindert Rebase-Fehler bei shallow clone
 
       - name: Python einrichten
         uses: actions/setup-python@v5
@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
 
       - name: Pakete installieren
-        run: pip install yfinance pyyaml
+        run: pip install -r requirements.txt   # kein direktes pip install – nutzt requirements.txt incl. curl_cffi
 
       - name: Tracker ausfuehren
         run: python tracker.py
@@ -35,10 +35,9 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f dividend_history.db
-          git stash
+          # Pull zuerst, dann adden – kein git stash nötig, da nur die DB geändert wird
+          # und der Workflow strikt sequenziell (kein paralleler Run) läuft.
           git pull --rebase origin main
-          git stash pop
           git add -f dividend_history.db
           git diff --staged --quiet && echo "Keine Aenderungen" || git commit -m "db: update $(date -u +%Y-%m-%d)"
           git push
