@@ -35,9 +35,11 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Pull zuerst, dann adden – kein git stash nötig, da nur die DB geändert wird
-          # und der Workflow strikt sequenziell (kein paralleler Run) läuft.
-          git pull --rebase origin main
+          # WICHTIG: erst committen, DANN rebasen. tracker.py ändert die DB →
+          # ein "git pull --rebase" vor dem Commit scheitert an ungestageten
+          # Änderungen ("cannot pull with rebase: You have unstaged changes").
           git add -f dividend_history.db
-          git diff --staged --quiet && echo "Keine Aenderungen" || git commit -m "db: update $(date -u +%Y-%m-%d)"
+          git diff --staged --quiet && echo "Keine Aenderungen — nichts zu committen" || git commit -m "db: update $(date -u +%Y-%m-%d)"
+          # Jetzt ist der Working Tree sauber → Rebase auf Remote-Stand funktioniert.
+          git pull --rebase origin main
           git push
