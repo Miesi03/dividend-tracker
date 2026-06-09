@@ -465,15 +465,14 @@ def check_yfinance(con, ticker, session, company_name: str):
     existing = get_stored(con, ticker, limit=1)
 
     if not existing:
-        # Erster Lauf: die zwei neuesten Ex-Dates als Baseline speichern
+        # Erster Lauf: die zwei neuesten Ex-Dates als Baseline speichern, dann
+        # immer return None. existing bleibt [] – weiter unten würde existing[0]
+        # einen IndexError auslösen. Beim ersten Lauf gibt es sowieso nichts zu
+        # vergleichen, also direkt zurück.
         for ex_date, amount in history[:2]:
             upsert(con, ticker, ex_date, amount)
-        rows = get_stored(con, ticker, limit=2)
-        if len(rows) < 2:
-            print(f"  Baseline gesetzt: {currency}{latest_amount:.4f} ({latest_date})")
-            return None
-        curr_date,  curr_amount  = rows[0]
-        prev_date,  prev_amount  = rows[1]
+        print(f"  Baseline gesetzt: {currency}{latest_amount:.4f} ({latest_date})")
+        return None
     else:
         # Folgeläufe: nur neuesten Ex-Date speichern
         upsert(con, ticker, latest_date, latest_amount)
