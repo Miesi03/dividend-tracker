@@ -1,6 +1,12 @@
 """
 Dividend Tracker
 Kombiniert SEC EDGAR (fruehzeitige Ankuendigungen) + yfinance (Verlauf)
+
+Fixes vs. urspruengliche Version:
+  - curl_cffi-Session (Browser-Imitation) gegen Yahoo Rate-Limiting
+  - tk.info entfernt → Firmennamen kommen aus EDGAR-Cache (spart 52 HTTP-Calls)
+  - time.sleep(2) zwischen yfinance-Abfragen
+  - Explizites Error-Logging statt stilles except-Schlucken
 """
 
 import os, re, json, sqlite3, time, urllib.request, yaml
@@ -15,6 +21,7 @@ DB_PATH          = Path("dividend_history.db")
 WATCHLIST        = Path("watchlist.yaml")
 MIN_CHANGE_PCT   = 0.5
 SEC_UA           = "DividendTracker private-use admin@example.com"
+YF_SLEEP_SEC     = 2.0   # Pause zwischen yfinance-Abfragen → verhindert Yahoo 429
 
 # ── Währung ───────────────────────────────────────────────────────────────────
 
@@ -400,22 +407,27 @@ def scan_edgar(con, ticker, cik, company_name, lookback_days=2):
 
 # ── yfinance ──────────────────────────────────────────────────────────────────
 
-def check_yfinance(con, ticker):
+def check_yfinance(con, ticker, session, company_name: str):
+    """
+    Prüft einen Ticker auf Dividendenänderungen via yfinance.
+
+    Parameters
+    ----------
+    session     : curl_cffi.requests.Session — Browser-imitierende Session gegen
+                  Yahoo Rate-Limiting. Wird einmalig in main() erstellt und für
+                  alle Ticker wiederverwendet.
+    company_name: Firmenname aus EDGAR-Cache oder Ticker-Symbol. Wir rufen
+                  tk.info bewusst NICHT auf – spart ~52 HTTP-Requests und
+                  reduziert Rate-Limit-Risiko erheblich.
+    """
     try:
         import yfinance as yf
         import pandas as pd
 
-        tk  = yf.Ticker(ticker)
+        tk  = yf.Ticker(ticker, session=session)
         raw = tk.dividends
         if raw is None or (hasattr(raw, 'empty') and raw.empty):
             return None
-
-        # Firmenname aus yfinance-Info ermitteln
-        try:
-            info         = tk.info
-            company_name = info.get("shortName") or info.get("longName") or ticker
-        except Exception:
-            company_name = ticker
 
         # yfinance >= 0.2.x gibt DataFrame zurück, ältere Versionen Series
         if isinstance(raw, pd.DataFrame):
@@ -434,7 +446,8 @@ def check_yfinance(con, ticker):
         history.sort(reverse=True)
 
     except Exception as e:
-        print(f"  yfinance-Fehler: {e}")
+        # Explizites Logging statt stilles Schlucken – sichtbar im Actions-Log
+        print(f"  [{ticker}] yfinance-Fehler: {type(e).__name__}: {e}")
         return None
 
     if not history:
@@ -510,9 +523,23 @@ def main():
     con     = init_db()
     cik_map = get_cik_map()
 
-    edgar_alerts = []
-    yf_alerts    = []
+    edgar_alerts  = []
+    yf_alerts     = []
     edgar_tickers = set()
+    company_names = {}   # Firmennamen aus EDGAR für yfinance-Phase wiederverwenden
+
+    # ── curl_cffi-Session einmalig erstellen ─────────────────────────────────
+    # Imitiert einen echten Chrome-Browser → verhindert Yahoo-Rate-Limiting
+    # (429 YFRateLimitError), das insbesondere GitHub-Actions-IPs seit April 2025
+    # betrifft. Die Session wird für ALLE yfinance-Calls wiederverwendet.
+    try:
+        from curl_cffi import requests as cffi_requests
+        session = cffi_requests.Session(impersonate="chrome")
+        print("  curl_cffi-Session aktiv (Chrome-Imitation)\n")
+    except ImportError:
+        print("  WARNUNG: curl_cffi nicht gefunden — Rate-Limiting möglich.")
+        print("  Bitte 'pip install curl_cffi>=0.7' ausführen.\n")
+        session = None
 
     # ── Phase 1: EDGAR ───────────────────────────────────────────────────────
     print("── Phase 1: EDGAR (Ankuendigungen) ──────────────────")
@@ -520,12 +547,14 @@ def main():
         cik = cik_map.get(ticker)
         if not cik:
             print(f"  [{ticker}] kein US-CIK — wird nur via yfinance geprueft")
+            company_names[ticker] = ticker   # Fallback: Ticker als Firmenname
             continue
         try:
             sub          = json.loads(http_get(f"https://data.sec.gov/submissions/CIK{cik}.json"))
             company_name = sub.get("name", ticker)
         except Exception:
             company_name = ticker
+        company_names[ticker] = company_name   # Cache für Phase 2
         print(f"  [{ticker}] {company_name}")
         alerts = scan_edgar(con, ticker, cik, company_name)
         if alerts:
@@ -537,9 +566,11 @@ def main():
     print("\n── Phase 2: yfinance (Verlaufs-Check) ───────────────")
     for ticker in tickers:
         print(f"  [{ticker}]")
-        msg = check_yfinance(con, ticker)
+        company_name = company_names.get(ticker, ticker)
+        msg = check_yfinance(con, ticker, session, company_name)
         if msg and ticker not in edgar_tickers:
             yf_alerts.append(msg)
+        time.sleep(YF_SLEEP_SEC)   # Pause nach jedem Ticker → verhindert Yahoo 429
 
     # ── Ergebnis ──────────────────────────────────────────────────────────────
     print(f"\n{'='*52}")
