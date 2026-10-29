@@ -25,7 +25,7 @@ tickers:
   - V
   - ZTS
   - AEM
-  - ASML
+  - ASML.AS     # Euronext Amsterdam (EUR) statt Nasdaq-ADR (USD, wechselkursabhängig)
   - ALV.DE
   - MC.PA
   - HNR1.DE
