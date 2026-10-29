@@ -8,13 +8,15 @@ Erkennt Dividendenankündigungen und -änderungen und sendet sofort eine Telegra
 
 ## Wie es funktioniert
 
-Der Tracker läuft täglich Mo–Fr um 08:00 Uhr MEZ vollautomatisch und prüft in zwei Phasen:
+Der Tracker läuft Mo–Fr um 08:00 Uhr MEZ vollautomatisch:
 
 **Phase 1 — SEC EDGAR (US-Aktien)**  
-Scannt neue 8-K Formulare bei der US-Börsenaufsicht. Unternehmen müssen Dividendenankündigungen dort einreichen — oft 3–6 Wochen vor dem Ex-Dividend-Date. Der Tracker erkennt das sofort.
+Scannt neue 8-K-Meldungen der letzten 7 Tage inklusive Anhang EX-99 (dort steht meist die Pressemitteilung). Ausgewertet werden nur Sätze mit „dividend“, damit z. B. ein Umsatzplus aus einem Quartalsbericht nicht als Dividendenerhöhung gelesen wird. Viele Firmen (z. B. Microsoft, Coca-Cola, PepsiCo) reichen Dividendenbeschlüsse aber gar nicht als 8-K ein, deshalb gibt es zusätzlich Nasdaq.
 
-**Phase 2 — yfinance (alle Ticker inkl. Europa)**  
-Erkennt neue Ex-Dates in der Dividendenhistorie und bewertet die neue Zahlung. Greift auch für internationale Aktien, bei denen EDGAR nicht verfügbar ist.
+**Phase 2 — pro Ticker**
+- **yfinance (alle Börsen):** lädt die splitbereinigte Dividendenhistorie.
+- **Nasdaq (US-Aktien):** liefert angekündigte, noch nicht gezahlte Dividenden mit Betrag, Ankündigungsdatum, Ex-Date und Zahltag. So wird z. B. eine Erhöhung schon kurz nach der Ankündigung gemeldet und nicht erst zum Ex-Date. Für europäische Aktien gibt es keine vergleichbare freie Quelle.
+- **Neues Ex-Date:** Taucht eine neue Zahlung in der yfinance-Historie auf, wird sie bewertet. War sie bereits angekündigt und gemeldet, kommt keine zweite Meldung.
 
 **So wird verglichen:**
 - Entspricht die neue Zahlung der vorherigen, gibt es keine Meldung. Rundungsabweichungen bis 0,0005 werden ignoriert, weil yfinance auf 3 Nachkommastellen rundet (z. B. 0,0625 $ → 0,063 $).
@@ -23,29 +25,48 @@ Erkennt neue Ex-Dates in der Dividendenhistorie und bewertet die neue Zahlung. G
 - Verglichen wird nur innerhalb der yfinance-Historie, die nach Aktiensplits rückwirkend bereinigt ist. Ein Split (z. B. Amphenol 2:1) löst daher keine Schein-Kürzung aus.
 - Zusätzlich zeigt die Meldung die Summe der letzten 12 Monate im Vergleich zum Vorjahr.
 
-Bei einer Änderung landet eine Nachricht direkt auf dem Handy via Telegram.
+**Sonderdividenden:**  
+Weder yfinance noch Nasdaq kennzeichnen Sonderdividenden. Der Tracker erkennt sie deshalb auf zwei Wegen und schreibt das immer in die Meldung:
+- 💰 **Sonderdividende (laut Ankündigung):** Die SEC-Meldung spricht ausdrücklich von „special dividend“.
+- ⚠️ **Vermutlich Sonderdividende oder starke Erhöhung:** Der Betrag ist mindestens 2,5-mal so hoch wie die üblichen Zahlungen, und im Umkreis von gut einem Jahr gab es keine vergleichbar hohe Zahlung. Bei einer einzelnen, sehr starken Erhöhung (z. B. NVIDIA 2026: 0,01 $ → 0,25 $) lässt sich das anfangs nicht unterscheiden.
+
+Erkannte Sonderdividenden fließen nicht in spätere Vergleiche ein. Die nächste reguläre Zahlung erscheint also nicht als „Kürzung“.
+
+**Überwachung:**
+- Probleme (yfinance-Fehler, falsche Ticker, SEC oder Nasdaq nicht erreichbar) stehen in der Telegram-Nachricht.
+- Schlägt Telegram fehl oder fallen mindestens 25 % der Ticker aus, endet der Lauf mit Fehler, und GitHub verschickt eine E-Mail.
+- Montags kommt ein Wochenstatus, auch ohne Meldungen. Er nennt überfällige Dividenden, die auf eine Aussetzung hindeuten können.
+- Lange Nachrichten werden automatisch auf mehrere Telegram-Nachrichten verteilt (Limit 4.096 Zeichen).
 
 ---
 
 ## Beispiel-Alert
 
 ```
-Dividend Tracker — 14.04.2026
+Dividend Tracker — 29.10.2026
 
-── Neue Ankündigungen (EDGAR) ──
+── Neue Ankündigungen ──
 
-📢 PepsiCo (PEP)
-↑ Dividendenankündigung via SEC EDGAR
-   Neue Dividende: $1.4850 pro Aktie
-   Vorherige Dividende: $1.4230
-   ➜ Das ist eine Erhöhung von 4.4%
-   Eingereicht am: 2026-04-14
+📢 MICROSOFT CORP (MSFT)
+↑ Dividendenankündigung via Nasdaq
+   Neue Dividende: $0.98 pro Aktie
+   Vorjahreszeitraum: $0.91  (Ex-Date: 20-11-2025)
+   Vorherige Zahlung: $0.91
+   ➜ Das ist eine Erhöhung von 7.7% ggü. Vorjahr
+   Angekündigt am:  15-09-2026
+   Ex-Dividende:    19-11-2026
+   Zahltag:         10-12-2026
+   Zahlungsweise:   Quartalsweise
 
-── Bestätigt via Kursdaten ──
+── Neue Ex-Dates (Kursdaten) ──
 
-↑ MSFT — Dividendenerhöhung (+9.6%)
-   Neue Dividende: $0.91  (Ex-Date: 2026-02-19)
-   Vorher:         $0.83  (Ex-Date: 2025-11-20)
+📢 ASML HOLDING (ASML.AS)
+↑ Neue Dividende laut Kursdaten (yfinance)
+   Neue Dividende: €1.88 pro Aktie  (Ex-Date: 27-07-2026)
+   Vorjahreszeitraum: €1.60  (Ex-Date: 29-07-2025)
+   ➜ Das ist eine Erhöhung von 17.5% ggü. Vorjahr
+   Vorherige Zahlung: €2.70  (Ex-Date: 24-04-2026, -30.4%)
+   Zahlungsweise:   Quartalsweise
 
 2 Meldung(en) heute.
 ```
@@ -56,13 +77,18 @@ Dividend Tracker — 14.04.2026
 
 ```
 dividend-tracker/
-├── tracker.py              # Hauptskript (EDGAR + yfinance Logik)
+├── tracker.py              # Hauptskript (EDGAR, Nasdaq, yfinance)
 ├── watchlist.yaml          # Watchlist mit allen Tickern
-├── requirements.txt        # Python-Abhängigkeiten
+├── requirements.txt        # Python-Abhängigkeiten (feste Versionen)
+├── requirements-dev.txt    # zusätzlich pytest
 ├── dividend_history.db     # SQLite-Datenbank (automatisch erstellt)
+├── tests/
+│   └── test_tracker.py     # Offline-Tests der Bewertungslogik
 └── .github/
+    ├── dependabot.yml      # monatliche Update-Vorschläge
     └── workflows/
-        └── daily.yml       # GitHub Actions Zeitplan
+        ├── daily.yml       # GitHub Actions Zeitplan
+        └── tests.yml       # Tests bei jedem Pull Request
 ```
 
 ---
@@ -79,6 +105,7 @@ dividend-tracker/
 |---|---|
 | `TELEGRAM_TOKEN` | Bot-Token von @BotFather |
 | `TELEGRAM_CHAT_ID` | Deine persönliche Chat-ID |
+| `SEC_CONTACT_EMAIL` | Optional, aber empfohlen: deine E-Mail-Adresse. Die SEC verlangt eine echte Kontaktadresse im User-Agent und kann generische Absender sperren. |
 
 **Telegram-Bot einrichten:**
 1. @BotFather in Telegram suchen → `/newbot` → Token kopieren
@@ -150,7 +177,7 @@ Beim nächsten Lauf werden die neuen Titel automatisch erkannt und Baselines ges
 
 ## Datenbank
 
-Die SQLite-Datenbank `dividend_history.db` speichert für jeden Ticker das letzte bekannte Ex-Dividend-Date mit Betrag. Sie wird nach jedem Lauf automatisch ins Repository committet und dient als Gedächtnis, ob eine Dividende neu ist. Der Betrag wird außerdem für den Vergleich mit EDGAR-Ankündigungen genutzt.
+Die SQLite-Datenbank `dividend_history.db` speichert für jeden Ticker das letzte bekannte Ex-Dividend-Date mit Betrag. Sie wird nach jedem Lauf automatisch ins Repository committet und dient als Gedächtnis, ob eine Dividende neu ist. Der Betrag wird außerdem für den Vergleich mit EDGAR-Ankündigungen genutzt. Außerdem merkt sie sich bereits gemeldete Ankündigungen (gegen Doppelmeldungen) und die Firmennamen der Nicht-US-Werte.
 
 ---
 
@@ -158,7 +185,20 @@ Die SQLite-Datenbank `dividend_history.db` speichert für jeden Ticker das letzt
 
 ```
 yfinance    # Dividendenhistorie und Kursdaten
+curl_cffi   # Browser-Imitation gegen Yahoo-Rate-Limiting, auch für Nasdaq
+pandas      # wird von yfinance benötigt
 pyyaml      # Watchlist lesen
 ```
 
-Kein bezahlter API-Key erforderlich. SEC EDGAR ist kostenlos und öffentlich zugänglich.
+Die Versionen in `requirements.txt` sind fest vorgegeben, weil yfinance seine Schnittstelle häufig ändert. Dependabot schlägt Updates monatlich als Pull Request vor, die Tests prüfen sie vor dem Merge.
+
+Kein bezahlter API-Key erforderlich. SEC EDGAR und Nasdaq sind kostenlos und öffentlich zugänglich.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Die Tests laufen ohne Netzwerkzugriff und bilden echte Fälle nach (z. B. ASML, Amphenol-Split, Vertiv-Rundung, Costco-Sonderdividende).
