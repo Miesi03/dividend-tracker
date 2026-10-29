@@ -52,4 +52,10 @@ tickers:
   - 005930.KS   # Samsung Electronics, Korea (KRW) statt GDR SMSN (lieferte keine Daten)
   - 000660.KS   # SK hynix, Korea (KRW) statt GDR HY9H (lieferte keine Daten)
   - RHM.DE
-  
+
+
+# Firmen, die ihre Dividende in einer anderen Währung festlegen als die Börse,
+# an der sie gelistet sind. yfinance rechnet in die Börsenwährung um, der
+# Tracker rechnet für den Vergleich in die Ankündigungswährung zurück.
+declared_currency:
+  HAUTO.OL: USD   # Höegh Autoliners: Dividende in USD, Oslo-Kurs in NOK

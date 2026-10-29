@@ -14,7 +14,14 @@ Der Tracker läuft täglich Mo–Fr um 08:00 Uhr MEZ vollautomatisch und prüft 
 Scannt neue 8-K Formulare bei der US-Börsenaufsicht. Unternehmen müssen Dividendenankündigungen dort einreichen — oft 3–6 Wochen vor dem Ex-Dividend-Date. Der Tracker erkennt das sofort.
 
 **Phase 2 — yfinance (alle Ticker inkl. Europa)**  
-Vergleicht die neueste Dividende in der Kurshistorie mit dem gespeicherten Wert. Greift auch für internationale Aktien, bei denen EDGAR nicht verfügbar ist.
+Erkennt neue Ex-Dates in der Dividendenhistorie und bewertet die neue Zahlung. Greift auch für internationale Aktien, bei denen EDGAR nicht verfügbar ist.
+
+**So wird verglichen:**
+- Entspricht die neue Zahlung der vorherigen, gibt es keine Meldung. Rundungsabweichungen bis 0,0005 werden ignoriert, weil yfinance auf 3 Nachkommastellen rundet (z. B. 0,0625 $ → 0,063 $).
+- Weicht sie ab, wird mit der Zahlung aus dem **Vorjahreszeitraum** verglichen. So werden schwankende Interims- und Schlussdividenden (z. B. ASML, LVMH, Novo Nordisk) nicht als Kürzung oder Erhöhung gemeldet, eine echte Erhöhung aber schon.
+- Gibt es keine Vorjahreszahlung (z. B. bei jährlicher Zahlung), wird mit der vorherigen Zahlung verglichen.
+- Verglichen wird nur innerhalb der yfinance-Historie, die nach Aktiensplits rückwirkend bereinigt ist. Ein Split (z. B. Amphenol 2:1) löst daher keine Schein-Kürzung aus.
+- Zusätzlich zeigt die Meldung die Summe der letzten 12 Monate im Vergleich zum Vorjahr.
 
 Bei einer Änderung landet eine Nachricht direkt auf dem Handy via Telegram.
 
@@ -97,6 +104,13 @@ dividend-tracker/
 
 **Achtung bei ausländischen Aktien mit US-Listing (ADRs):** Ein Ticker wie `ASML` (Nasdaq) liefert die Dividende in USD umgerechnet. Bleibt die Dividende in Euro gleich, schwankt der USD-Betrag trotzdem mit dem Wechselkurs, und der Tracker meldet eine scheinbare Erhöhung oder Senkung. Deshalb immer das Heimatlisting verwenden, z. B. `ASML.AS` statt `ASML`, `RACE.MI` statt `RACE` oder `2330.TW` statt `TSM`. Ausnahme: Firmen, die ihre Dividende selbst in USD festlegen (z. B. `AEM`, `PAAS`), bleiben am besten beim US-Ticker.
 
+**Abweichende Ankündigungswährung:** Legt eine Firma ihre Dividende in einer anderen Währung fest als die Börse, an der sie gelistet ist (z. B. Höegh Autoliners: USD, Oslo-Kurs in NOK), lässt sie sich in `watchlist.yaml` unter `declared_currency` eintragen. Der Tracker rechnet die Beträge dann zum Wechselkurs der Woche vor dem Ex-Date zurück (Genauigkeit ca. ±1 %) und meldet erst Änderungen ab 2 %.
+
+```yaml
+declared_currency:
+  HAUTO.OL: USD
+```
+
 **Tipp:** Den korrekten Ticker immer auf [finance.yahoo.com](https://finance.yahoo.com) prüfen — der dort angezeigte Ticker funktioniert direkt.
 
 ### 4. Ersten Lauf starten
@@ -130,13 +144,13 @@ tickers:
   - WKL.AS   # Wolters Kluwer
 ```
 
-Beim nächsten Lauf werden die neuen Titel automatisch erkannt und Baselines gesetzt.
+Beim nächsten Lauf werden die neuen Titel automatisch erkannt und Baselines gesetzt. Ticker, die aus der Watchlist entfernt wurden, löscht der Tracker automatisch aus der Datenbank.
 
 ---
 
 ## Datenbank
 
-Die SQLite-Datenbank `dividend_history.db` speichert für jeden Ticker den letzten bekannten Dividendenwert und das Ex-Dividend-Date. Sie wird nach jedem Lauf automatisch ins Repository committet und dient als Gedächtnis für den Vergleich beim nächsten Lauf.
+Die SQLite-Datenbank `dividend_history.db` speichert für jeden Ticker das letzte bekannte Ex-Dividend-Date mit Betrag. Sie wird nach jedem Lauf automatisch ins Repository committet und dient als Gedächtnis, ob eine Dividende neu ist. Der Betrag wird außerdem für den Vergleich mit EDGAR-Ankündigungen genutzt.
 
 ---
 
