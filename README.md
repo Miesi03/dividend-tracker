@@ -90,8 +90,12 @@ dividend-tracker/
 | SIX (Schweiz) | `.SW` | `SIKA.SW`, `NOVN.SW` |
 | Oslo | `.OL` | `HAUTO.OL` |
 | Kopenhagen | `.CO` | `NOVO-B.CO` |
+| Euronext Amsterdam | `.AS` | `ASML.AS` |
+| Borsa Italiana (Mailand) | `.MI` | `RACE.MI` |
+| Taiwan | `.TW` | `2330.TW` |
+| Korea (KOSPI) | `.KS` | `005930.KS`, `000660.KS` |
 
-**Achtung bei ausländischen Aktien mit US-Listing (ADRs):** Ein Ticker wie `ASML` (Nasdaq) liefert die Dividende in USD umgerechnet. Bleibt die Dividende in Euro gleich, schwankt der USD-Betrag trotzdem mit dem Wechselkurs, und der Tracker meldet eine scheinbare Erhöhung oder Senkung. Deshalb immer das Heimatlisting verwenden, z. B. `ASML.AS` statt `ASML`.
+**Achtung bei ausländischen Aktien mit US-Listing (ADRs):** Ein Ticker wie `ASML` (Nasdaq) liefert die Dividende in USD umgerechnet. Bleibt die Dividende in Euro gleich, schwankt der USD-Betrag trotzdem mit dem Wechselkurs, und der Tracker meldet eine scheinbare Erhöhung oder Senkung. Deshalb immer das Heimatlisting verwenden, z. B. `ASML.AS` statt `ASML`, `RACE.MI` statt `RACE` oder `2330.TW` statt `TSM`. Ausnahme: Firmen, die ihre Dividende selbst in USD festlegen (z. B. `AEM`, `PAAS`), bleiben am besten beim US-Ticker.
 
 **Tipp:** Den korrekten Ticker immer auf [finance.yahoo.com](https://finance.yahoo.com) prüfen — der dort angezeigte Ticker funktioniert direkt.
 

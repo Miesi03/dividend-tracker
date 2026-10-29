@@ -19,7 +19,7 @@ tickers:
   - PAAS
   - PEP
   - O
-  - TSM
+  - 2330.TW     # TSMC, Taiwan (TWD) statt NYSE-ADR TSM (USD, wechselkursabhängig)
   - VICI
   - VRT
   - V
@@ -48,8 +48,8 @@ tickers:
   - COST
   - META
   - GOOG
-  - RACE
-  - SMSN
-  - HY9H
+  - RACE.MI     # Ferrari, Mailand (EUR) statt NYSE (USD, wechselkursabhängig)
+  - 005930.KS   # Samsung Electronics, Korea (KRW) statt GDR SMSN (lieferte keine Daten)
+  - 000660.KS   # SK hynix, Korea (KRW) statt GDR HY9H (lieferte keine Daten)
   - RHM.DE
   

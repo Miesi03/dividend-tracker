@@ -55,6 +55,10 @@ def get_currency_symbol(ticker: str) -> str:
         return 'DKK '   # Nasdaq Kopenhagen
     elif t.endswith('.ST'):
         return 'SEK '   # Nasdaq Stockholm
+    elif t.endswith(('.TW', '.TWO')):
+        return 'NT$'    # Taiwan Stock Exchange / Taipei Exchange
+    elif t.endswith(('.KS', '.KQ')):
+        return '₩'      # Korea Exchange (KOSPI / KOSDAQ)
     elif t.endswith('.HK'):
         return 'HK$'    # Hongkong Stock Exchange
     elif t.endswith('.T'):
