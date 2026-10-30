@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Pakete installieren
+        run: pip install -r requirements-dev.txt
+
+      - name: Tests ausfuehren
+        run: python -m pytest -v

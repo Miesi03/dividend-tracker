@@ -1,3 +1,7 @@
-yfinance>=0.2.54
-curl_cffi>=0.7
-pyyaml
+# Feste Versionen: yfinance ändert seine Schnittstelle häufig.
+# Updates schlägt Dependabot als Pull Request vor (.github/dependabot.yml),
+# die Tests (.github/workflows/tests.yml) prüfen sie vor dem Merge.
+yfinance==1.7.0
+curl_cffi==0.17.0
+pandas==3.0.5
+pyyaml==6.0.3
